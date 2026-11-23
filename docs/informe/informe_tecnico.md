@@ -65,9 +65,13 @@ Streamlit Community Cloud aloja directamente la interfaz Python y permite ejecut
 
 **Código fuente en GitHub.** [https://github.com/Vladimirjon/fiqa-information-retrieval](https://github.com/Vladimirjon/fiqa-information-retrieval)
 
-Los datos originales se leen de FiQA. Se publica por separado los seis artefactos derivados, incluidos los índices léxicos, los embeddings y el índice FAISS, en [VLADIMIRJON/jab-fiqa-artifacts](https://huggingface.co/datasets/VLADIMIRJON/jab-fiqa-artifacts). Guardarlos en el Hub permite reutilizarlos sin cargar Git ni reconstruirlos al arrancar. La app descarga los archivos necesarios desde una revisión fijada y valida sus huellas SHA-256 con `deploy/artifacts.json`. La integración entre preparación offline, publicación de artefactos y consulta en Streamlit se detalla en el diagrama [Arquitectura de JAB / FiQA](https://github.com/Vladimirjon/fiqa-information-retrieval/blob/main/docs/informe/Arquitectura-JAB-FiQA.pdf).
+Los datos originales se leen de FiQA. Se publica por separado los seis artefactos derivados, incluidos los índices léxicos, los embeddings y el índice FAISS, en [VLADIMIRJON/jab-fiqa-artifacts](https://huggingface.co/datasets/VLADIMIRJON/jab-fiqa-artifacts). Guardarlos en el Hub permite reutilizarlos sin cargar Git ni reconstruirlos al arrancar. La app descarga los archivos necesarios desde una revisión fijada y valida sus huellas SHA-256 con `deploy/artifacts.json`. La Figura 1 resume la arquitectura del sistema desde las fuentes y la preparación offline hasta la publicación de artefactos y la consulta en Streamlit.
 
 <!-- pagebreak -->
+
+![Arquitectura de JAB / FiQA](Arquitectura-JAB-FiQA.png)
+
+**Figura 1.** Arquitectura de JAB / FiQA: fuentes, preparación offline, publicación de artefactos y consulta en Streamlit.
 
 ## 3. Ejemplos de consultas y resultados
 
@@ -91,6 +95,8 @@ BM25 pone primero `535651`, que menciona bitcoins como garantía de un préstamo
 
 MiniLM recupera en el puesto 31 la respuesta `518721`, que relaciona el tipo de cambio y el poder adquisitivo con las inversiones. BM25 y TF-IDF con Porter dejan esa respuesta fuera del top-1000. La ventaja de +0,032258 en AP es cercana a la mediana, aunque los tres métodos registran cero aciertos en las diez primeras posiciones.
 
+<!-- pagebreak -->
+
 ### 3.4. TF-IDF aprovecha vocabulario específico (consulta 6410)
 
 *“Will an ETF immediately reflect a reconstitution of underlying index”*
@@ -113,8 +119,6 @@ TF-IDF con Porter sitúa primero `471723`, que indica que el índice se reconsti
 
 **Nota.** «Fuera» significa que el documento relevante quedó fuera de las primeras 1000 posiciones. En 2076, las posiciones se dan en el orden `278824` y `184646`.
 
-<!-- pagebreak -->
-
 ## 4. Análisis de métricas de evaluación
 
 ### 4.1. Protocolo y resultados globales
@@ -135,6 +139,8 @@ Para comparar tipos de consulta, medimos la longitud tras el preprocesamiento si
 | BM25 | Con | 0,069444 | 0,313021 | 0,206219 |
 | MiniLM | No aplica | **0,104475** | **0,441306** | **0,311586** |
 
+<!-- pagebreak -->
+
 ```mermaid
 xychart-beta horizontal
     x-axis ["Jaccard sin", "Jaccard con", "TF-IDF sin", "TF-IDF con", "BM25 sin", "BM25 con", "MiniLM"]
@@ -142,7 +148,7 @@ xychart-beta horizontal
     bar [0.038520, 0.038461, 0.133028, 0.139718, 0.180993, 0.206219, 0.311586]
 ```
 
-**Figura 1.** MAP@1000 por configuración. «Sin» y «con» indican las variantes de Porter.
+**Figura 2.** MAP@1000 por configuración. «Sin» y «con» indican las variantes de Porter.
 
 ### 4.2. Incertidumbre de los contrastes
 
@@ -157,8 +163,6 @@ En estos contrastes exploratorios, emparejamos por consulta las AP de `reports/m
 | Porter en TF-IDF (con menos sin) | +0,006689 | −0,002 a 0,016 | 0,152 |
 
 Frente a BM25 con Porter, MiniLM gana 0,0350 en P@10 y 0,1283 en R@10. La AP sube en 443 consultas, baja en 156 y empata en 49. Porter apenas altera Jaccard (−0,000058 en MAP) y el contraste respalda su efecto positivo en BM25. En TF-IDF se observa un +5,03 % relativo, con un IC que incluye cero. La evidencia de mejora para esa configuración es insuficiente.
-
-<!-- pagebreak -->
 
 ### 4.3. Rendimiento por tipo de consulta
 
@@ -175,6 +179,8 @@ Frente a BM25 con Porter, MiniLM gana 0,0350 en P@10 y 0,1283 en R@10. La AP sub
 | Sin mayúsculas | 530 | 0,033 | 0,032 | 0,117 | 0,120 | 0,166 | 0,183 | **0,289** |
 
 **Longitud.** El MAP aumenta con la longitud en las siete configuraciones. BM25 sin Porter lidera los métodos léxicos de 0 a 3 tokens (0,112) y BM25 con Porter, los otros dos grupos. En consultas cortas, Porter reduce el MAP de TF-IDF de 0,073 a 0,056.
+
+<!-- pagebreak -->
 
 **Dígitos y mayúsculas.** MiniLM supera a BM25 con Porter por 0,075 con dígitos y 0,109 sin ellos. TF-IDF sin Porter obtiene 0,156 con dígitos y 0,130 sin ellos. Las siete configuraciones logran mayor MAP con mayúsculas. MiniLM obtiene 0,415 frente a 0,289. Las diferencias por grupo son descriptivas.
 
