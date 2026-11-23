@@ -23,6 +23,10 @@ La evaluación usa P@10 y R@10 por consulta y MAP@1000 por sistema, con y sin Po
 
 Python 3.12, NLTK, NumPy/SciPy dispersas, sentence-transformers, FAISS y Streamlit; pytest, ruff y GitHub Actions. Las versiones están fijadas en `requirements.txt`. No se permiten motores completos ni rank_bm25.
 
+El siguiente diagrama resume la arquitectura del sistema desde las fuentes y la preparación offline hasta la publicación de artefactos y la consulta en Streamlit:
+
+![Arquitectura de JAB / FiQA](docs/informe/Arquitectura-JAB-FiQA.png)
+
 ```text
 src/ris/              data, preprocessing, index, retrievers, evaluation
 scripts/              build_artifacts.py y evaluate.py
