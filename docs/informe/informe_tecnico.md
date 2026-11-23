@@ -1,115 +1,117 @@
 **Escuela Politécnica Nacional**
 
-# Recuperación de información financiera en FiQA
+# Recuperación de información en FiQA
 
 Comparación de Jaccard, TF-IDF, BM25 y MiniLM con búsqueda exacta
 
 **Integrantes.** Ismael Freire, Johann Pasquel y Jorge Torres.
 
-Recuperación de Información · Prof. Iván Carrera · 19 de noviembre de 2026
+Recuperación de Información · Prof. Iván Carrera
 
-**Resumen.** Evaluamos Jaccard, TF-IDF, BM25 y MiniLM con las mismas 648 consultas de prueba de FiQA. MiniLM alcanzó un MAP@1000 de 0,311586. Entre los métodos clásicos, el mejor resultado fue el de BM25 con Porter, con 0,206219. El análisis de dos consultas muestra cómo cambia el rendimiento de estos modelos según la pregunta.
+**Resumen.** Evaluamos siete configuraciones con las mismas 648 consultas de prueba de FiQA. MiniLM obtuvo el mayor MAP@1000 (0,311586) y BM25 con Porter fue el mejor método léxico (0,206219). Los contrastes pareados respaldan la ventaja de MiniLM y el efecto de Porter en BM25. Cuatro consultas ilustran qué cambia en el ranking y el análisis por grupos muestra dónde conviene matizar el promedio.
 
 ## 1. Descripción del corpus utilizado
 
-Usamos la versión de FiQA que distribuye BEIR, una colección de preguntas y respuestas financieras en inglés [1, 2, 3]. El cargador combina el título y el texto de cada documento. Tanto `doc_id` como el identificador de consulta se guardan como cadenas.
+Usamos FiQA en la distribución de BEIR [1, 2], con el corpus y los juicios de relevancia entregados en la asignatura [3]. Las consultas y los documentos están en inglés y cubren preguntas financieras sobre inversión, impuestos y crédito, entre otros temas. Cada documento conserva su identificador `doc_id` y un campo de búsqueda que combina título y texto. Los juicios de relevancia, o *qrels*, vinculan el identificador de consulta `qid` con los documentos juzgados relevantes.
 
-**Tabla 1.** Documentos, consultas y juicios de relevancia de FiQA
+**Tabla 1.** Composición de FiQA.
 
 | Elemento | Cantidad | Interpretación |
 | --- | ---: | --- |
-| Documentos | 57 638 | Corpus completo, incluidos textos vacíos |
-| Consultas globales | 6 648 | Train, validación y test disjuntos |
-| Consultas test | 648 | Mismo conjunto para las siete configuraciones |
-| Pares de juicios test | 1 706 | Todos con score de relevancia igual a 1 |
-| Documentos relevantes test distintos | 1 706 | No equivale al número de consultas |
+| Documentos | 57 638 | Corpus completo |
+| Consultas | 6 648 | 5 500 de entrenamiento, 500 de validación y 648 de prueba |
+| Consultas evaluadas | 648 | Partición de prueba, compartida por las siete configuraciones |
+| Pares consulta-documento juzgados en prueba | 1 706 | Todos con relevancia binaria igual a 1 |
 
-El conjunto de entrenamiento tiene 5 500 consultas y el de validación, 500. Para evaluar los modelos usamos el conjunto de prueba. El cargador fija las revisiones del corpus y de los qrels y comprueba que sus identificadores correspondan.
-
-Tras corregir la tokenización el 16 de noviembre, el análisis del corpus confirmó que todos los títulos estaban vacíos y que 38 documentos carecían de texto. Los mantuvimos para conservar la colección y sus juicios de relevancia. El documento `117276`, juzgado relevante para `qid 5206`, es uno de esos casos.
-
-El preprocesamiento clásico sin Porter produce 4 099 045 apariciones de términos. La longitud documental media es de 71,12 tokens, la mediana de 48 y el percentil 99 de 340. Las consultas de prueba tienen una media de 6,39 tokens. El cálculo de longitudes documentales incluye los documentos vacíos.
-
-Al aplicar el algoritmo de Porter [4], el vocabulario documental pasó de 78 115 a 57 620 formas (26,24 % de reducción) sobre el mismo número de apariciones. En la sección 4 examinamos el efecto en las métricas.
-
-Los qrels recogen los juicios disponibles. Cada consulta de prueba tiene entre 1 y 15 documentos juzgados relevantes, con media 2,633 y mediana 2. En 404 consultas hay dos relevantes o menos. Con tan pocos documentos relevantes por consulta, recuperarlos todos puede dar un recall alto incluso si la P@10 es baja [5].
-
-<!-- pagebreak -->
+Los títulos están vacíos y 38 documentos carecen de texto. Se conservan para mantener la colección y sus juicios, incluido el documento `117276`, relevante para la consulta `5206`. Cada consulta de prueba tiene entre 1 y 15 documentos juzgados relevantes, con una mediana de 2. Si las dos respuestas relevantes aparecen entre las diez primeras, el recall llega a 1 y la precisión es 0,2.
 
 ## 2. Explicación de las decisiones de diseño
 
-Implementamos los modelos y el índice invertido en Python 3.12, usamos MiniLM para la búsqueda densa y Streamlit para la interfaz. El repositorio documenta las fórmulas y los cortes empleados en la evaluación.
+### 2.1. Preprocesamiento e índice
 
-### 2.1. Representación y modelos clásicos
+Aplicamos el mismo procesamiento léxico a corpus y consultas para que compartan vocabulario. Pasamos el texto a minúsculas, lo tokenizamos con NLTK y filtramos las *stopwords* (palabras vacías) en inglés para reducir coincidencias poco informativas. Porter agrupa variantes morfológicas [4]. Lo dejamos opcional para medir su efecto con los demás ajustes fijos, pues una reducción de sufijos también puede unir formas con significados distintos. En el corpus reduce el vocabulario de 78 115 a 57 620 términos (26,24 %).
 
-Aplicamos el mismo preprocesamiento al corpus y a las consultas. Pasamos el texto a minúsculas, lo tokenizamos con NLTK y filtramos las palabras vacías en inglés. La reducción de sufijos con Porter es opcional [4]. El tokenizador conserva formas como `401k` y separa `goog-stock` en `goog` y `stock`. También divide `3.5` en `3` y `5`, por lo que pierde el significado del decimal.
+El índice invertido propio guarda la frecuencia de cada término en un documento (*f*), el número de documentos donde aparece (*df*) y la longitud de cada documento (*dl*). Los tres modelos léxicos reutilizan esas estadísticas. El tokenizador conserva `401k`, separa `goog-stock` en dos términos y divide `3.5` en `3` y `5`, con pérdida del valor decimal original.
 
-Nuestro índice invertido registra para cada término sus frecuencias por documento (postings). El archivo del índice guarda también la frecuencia documental `df`, las longitudes, el tamaño `N` y la configuración de Porter.
+<!-- pagebreak -->
 
-**Jaccard binario.** Compara los conjuntos de términos únicos de la consulta y el documento mediante `|intersección(Q,D)| / |unión(Q,D)|` [5]. En nuestra implementación, los términos desconocidos de la consulta cuentan en la unión.
+### 2.2. Modelos léxicos
 
-**TF-IDF.** Pondera los términos de la consulta y del documento, normaliza ambos vectores con L2 y calcula su coseno [5]. Usamos `tf = 1 + ln(f)` para frecuencia positiva e `idf = ln(N/df)`, sin suavizado. Una consulta de norma cero produce un ranking vacío.
+**Jaccard binario.** Mide la coincidencia entre los conjuntos de términos de la consulta (*Q*) y del documento (*D*). Cada término cuenta una vez. Los términos desconocidos de la consulta cuentan en la unión [5].
 
-**BM25.** La puntuación combina la frecuencia del término con un ajuste por la longitud del documento [6]. Sumamos sobre los términos únicos de la consulta. Cada término aporta `idf = ln(1 + (N - df + 0,5)/(df + 0,5))` multiplicado por `f × (k1 + 1) / (f + k1 × (1 - b + b × dl/avgdl))`. Usamos k1 = 1,5 y b = 0,75. La longitud `dl` cuenta apariciones y el promedio `avgdl` incluye los documentos vacíos.
+$$J(Q,D)=\frac{|Q\cap D|}{|Q\cup D|}$$
 
-### 2.2. Recuperación densa y evaluación separada
+**TF-IDF.** La TF logarítmica atenúa las repeticiones. Usamos IDF sin suavizado porque el vocabulario del índice ya tiene frecuencia documental positiva. Si un término aparece en los *N* documentos, su peso es cero. Ponderamos consulta y documento del mismo modo y los normalizamos con L2 para compararlos por coseno [5]. Los términos ausentes tienen TF cero y una consulta de norma cero produce un ranking vacío.
 
-El modelo `all-MiniLM-L6-v2` representa el texto en 384 dimensiones [7]. Usamos el texto original, con un límite de 256 tokens incluidos los especiales, y normalizamos los vectores float32 con L2. Con esos vectores, FAISS IndexFlatIP hace una búsqueda exacta por producto interno, que equivale al coseno [8]. Los reportes fijan la revisión del modelo.
+$$\mathrm{tf}(t,d)=1+\ln(f_{t,d})\quad(f_{t,d}>0),\qquad
+\mathrm{idf}(t)=\ln\frac{N}{df_t},\qquad
+\cos(Q,D)=\frac{\sum_{t\in Q\cap D}w_{Q,t}\,w_{D,t}}{\|Q\|_2\,\|D\|_2}$$
 
-Ordenamos cada ranking por puntuación descendente y resolvemos los empates por `doc_id`. Cada modelo usa su propia escala. La evaluación incluye los documentos vacíos y la vista Buscar los omite al presentar el ranking. Buscar incluye escritura asistida y un grafo 3D opcional para explorar los resultados. En Métricas se pueden comparar variantes de Porter y consultar el detalle por qid a partir de los archivos validados de `reports/`.
+**BM25.** Fijamos k₁ = 1,5 para moderar el aporte de las repeticiones y b = 0,75 para corregir parcialmente la longitud respecto a la media (*avgdl*) [6]. Mantuvimos ambos valores al comparar Porter. Sumar 1 al cociente dentro del logaritmo hace que un término muy frecuente aporte una puntuación positiva, aunque pequeña. Sumamos una vez por término distinto de la consulta.
 
-### 2.3. Despliegue realizado
+$$\mathrm{BM25}(D,Q)=\sum_{t\in Q}
+\ln\left(1+\frac{N-df_t+0{,}5}{df_t+0{,}5}\right)
+\frac{f_{t,d}(k_1+1)}{f_{t,d}+k_1(1-b+b\,dl_d/\mathrm{avgdl})}$$
 
-Publicamos la aplicación de #16 en [Streamlit Community Cloud](https://jab-retrieval-information-system.streamlit.app/). Hugging Face Hub aloja los seis artefactos en el dataset público `VLADIMIRJON/jab-fiqa-artifacts`. En conjunto suman 261 655 898 bytes. La aplicación verifica su tamaño y SHA-256 con `deploy/artifacts.json` y reutiliza los archivos que pasan la comprobación.
+### 2.3. Recuperación densa
 
-En la prueba local de #16, la interfaz estuvo disponible a los 32,0 s y MiniLM a los 68,3 s. El 17 de noviembre se probaron las búsquedas y Métricas en el servicio público y se midieron 977 MiB de RSS tras la carga inicial. Quedaron por comprobar el pico de memoria, el arranque tras reposo y la vista Comparar (#14).
+Elegimos `all-MiniLM-L6-v2` por ser un transformer preentrenado compacto que permite representar documentos y consultas con 384 dimensiones en CPU [7]. Codifica el texto original, con truncamiento a 256 tokens. Porter solo interviene en la recuperación léxica, de ahí «No aplica» para MiniLM. Normalizamos los vectores con L2 y usamos FAISS `IndexFlatIP`, cuyo producto interno equivale al coseno [8]. La búsqueda exacta permite evaluar el encoder con los 57 638 documentos sin introducir el error de un índice aproximado.
+
+### 2.4. Despliegue e interfaz
+
+Streamlit Community Cloud aloja directamente la interfaz Python y permite ejecutar los cuatro modelos en CPU en modalidad gratuita. El perfil de Render contemplado ofrecía poca memoria para esa carga. En Vercel, el tamaño de PyTorch y de los índices complicaba el empaquetado serverless. La aplicación permite buscar, comparar los cuatro rankings y consultar las métricas de evaluación.
+
+**Aplicación pública.** [https://jab-retrieval-information-system.streamlit.app/](https://jab-retrieval-information-system.streamlit.app/)
+
+**Código fuente en GitHub.** [https://github.com/Vladimirjon/fiqa-information-retrieval](https://github.com/Vladimirjon/fiqa-information-retrieval)
+
+Los datos originales se leen de FiQA. El equipo publica por separado los seis artefactos derivados, incluidos los índices léxicos, los embeddings y el índice FAISS, en [VLADIMIRJON/jab-fiqa-artifacts](https://huggingface.co/datasets/VLADIMIRJON/jab-fiqa-artifacts). Guardarlos en el Hub permite reutilizarlos sin cargar Git ni reconstruirlos al arrancar. La app descarga los archivos necesarios desde una revisión fijada y valida sus huellas SHA-256 con `deploy/artifacts.json`.
 
 <!-- pagebreak -->
 
 ## 3. Ejemplos de consultas y resultados
 
-Entre las 648 consultas, elegimos las dos que dieron el mayor y el menor valor de `AP@1000(denso) - AP@1000(BM25/Porter)`. En caso de empate, aplicamos el orden lexicográfico de `qid`.
+Seleccionamos el mayor y el menor cambio de AP@1000 de MiniLM frente a BM25 con Porter y el caso más cercano a la mediana de esa diferencia (+0,031843). Entre las consultas restantes elegimos aquella con mayor ventaja de TF-IDF con Porter frente a MiniLM. Desempatamos por `qid` en orden lexicográfico. Contrastamos las posiciones de los documentos relevantes con el reporte de evaluación.
 
-### 3.1. Mejora del denso: qid 2076
+### 3.1. MiniLM recupera una relación semántica · 2076
 
-**Consulta original:** “Can vet / veterinary bills be considered deductions (tax-deductible) for Income Tax purposes [Canada]?”
+*“Can vet / veterinary bills be considered deductions (tax-deductible) for Income Tax purposes [Canada]?”*
 
-**Tabla 2.** Posición de los documentos relevantes para la consulta 2076
+MiniLM sitúa primero `278824` y segundo `184646`, los dos relevantes. Ambos relacionan animales con gastos médicos sin usar `vet` ni `veterinary`. BM25 encuentra `184646` en el puesto 796. El juicio de relevancia de `278824` se refiere a un texto sobre EE. UU. y deja abierta su aplicabilidad fiscal a Canadá.
 
-| Documento relevante (qrel = 1) | Posición denso | Posición BM25/Porter |
-| --- | ---: | --- |
-| `278824` | 1 | No recuperado en top-1000 |
-| `184646` | 2 | 796 |
+### 3.2. BM25 aprovecha términos decisivos · 1310
 
-**Tabla 3.** Métricas de recuperación para la consulta 2076
+*“Is is possible to take a mortgage using Bitcoin as collateral?”*
 
-| Configuración | P@10 | R@10 | AP@1000 |
-| --- | ---: | ---: | ---: |
-| Denso | 0,200000 | 1,000000 | 1,000000 |
-| BM25 con Porter | 0,000000 | 0,000000 | 0,000628 |
+BM25 pone primero `535651`, que menciona bitcoins como garantía de un préstamo. MiniLM pone primero `101103`, un texto no juzgado sobre hipotecas con garantía inmobiliaria, y sitúa la respuesta relevante en el puesto 113.
 
-Los dos documentos relevantes relacionan animales con gastos médicos sin usar `vet` ni `veterinary`. El primer resultado de BM25, `541809`, trata de gastos empresariales y carece de juicio para esta consulta. El denso obtiene una ventaja de +0,999372 en AP. El texto de `278824` se refiere a EE. UU. y su juicio de relevancia deja abierta su aplicabilidad fiscal a Canadá.
+### 3.3. Diferencia próxima a la mediana · 10912
 
-### 3.2. Empeoramiento del denso: qid 1310
+*“Forex independent investments”*
 
-**Consulta original:** “Is is possible to take a mortgage using Bitcoin as collateral?”
+MiniLM recupera en el puesto 31 la respuesta `518721`, que relaciona el tipo de cambio y el poder adquisitivo con las inversiones. BM25 y TF-IDF con Porter dejan esa respuesta fuera del top-1000. La ventaja de +0,032258 en AP es cercana a la mediana, aunque los tres métodos registran cero aciertos en las diez primeras posiciones.
 
-**Tabla 4.** Posición del documento relevante para la consulta 1310
+### 3.4. TF-IDF aprovecha vocabulario específico · 6410
 
-| Documento relevante (qrel = 1) | Posición denso | Posición BM25/Porter |
-| --- | ---: | --- |
-| `535651` | 113 | 1 |
+*“Will an ETF immediately reflect a reconstitution of underlying index”*
 
-**Tabla 5.** Métricas de recuperación para la consulta 1310
+TF-IDF con Porter sitúa primero `471723`, que indica que el índice se reconstituye cada año. El texto comparte la raíz de *reconstitution* con la consulta. MiniLM sitúa esa respuesta en el puesto 253 y pone primero un texto no juzgado sobre la composición de otro ETF.
 
-| Configuración | P@10 | R@10 | AP@1000 |
-| --- | ---: | ---: | ---: |
-| Denso | 0,000000 | 0,000000 | 0,008850 |
-| BM25 con Porter | 0,100000 | 1,000000 | 1,000000 |
+**Tabla 2.** Posiciones de los relevantes y métricas por consulta.
 
-BM25 sitúa en primer lugar la respuesta que menciona bitcoins como garantía. MiniLM la recupera en la posición 113 y su AP queda 0,991150 por debajo de BM25. El primer resultado de MiniLM, `101103`, define la hipoteca y carece de juicio para esta consulta.
+| Consulta | Configuración | Puestos de relevantes | P@10 | R@10 | AP@1000 |
+| --- | --- | --- | ---: | ---: | ---: |
+| 2076 | MiniLM | 1 y 2 | 0,200000 | 1,000000 | 1,000000 |
+| 2076 | BM25 con Porter | Fuera y 796 | 0,000000 | 0,000000 | 0,000628 |
+| 1310 | MiniLM | 113 | 0,000000 | 0,000000 | 0,008850 |
+| 1310 | BM25 con Porter | 1 | 0,100000 | 1,000000 | 1,000000 |
+| 10912 | MiniLM | 31 | 0,000000 | 0,000000 | 0,032258 |
+| 10912 | BM25 con Porter | Fuera | 0,000000 | 0,000000 | 0,000000 |
+| 10912 | TF-IDF con Porter | Fuera | 0,000000 | 0,000000 | 0,000000 |
+| 6410 | MiniLM | 253 | 0,000000 | 0,000000 | 0,003953 |
+| 6410 | TF-IDF con Porter | 1 | 0,100000 | 1,000000 | 1,000000 |
 
-Recalculamos las métricas de ambos casos a partir de las posiciones guardadas. Los valores coinciden con el CSV. Si un documento carece de juicio, su relevancia queda indeterminada.
+**Nota.** «Fuera» significa que el documento relevante quedó fuera de las primeras 1000 posiciones. En 2076, las posiciones se dan en el orden `278824` y `184646`.
 
 <!-- pagebreak -->
 
@@ -117,66 +119,89 @@ Recalculamos las métricas de ambos casos a partir de las posiciones guardadas. 
 
 ### 4.1. Protocolo y resultados globales
 
-Evaluamos 648 consultas de prueba con relevancia binaria (`score > 0`) y rankings de hasta 1000 documentos. Probamos siete configuraciones, correspondientes a los tres métodos clásicos con y sin Porter y al modelo denso. Fijamos los parámetros antes de evaluar el conjunto de prueba. Al verificar los resultados, contrastamos las medias del CSV y el JSON con una tolerancia absoluta de 1e-12.
+Usamos la partición de prueba, relevancia binaria y parámetros fijos. **P@10** divide los aciertos entre 10 para medir la utilidad de una lista breve, incluso si se recuperan menos documentos. **R@10** divide esos aciertos entre todos los relevantes de la consulta [5]. Elegimos el corte de 1000 de la evaluación ad hoc de TREC para examinar el orden más allá de la primera página [10]. **AP@1000** suma la precisión en cada posición relevante hasta ese corte y divide por todos los relevantes. **MAP@1000** promedia la AP de las 648 consultas, incluidos los ceros. Las P y R globales también son medias por consulta.
 
-**P@10** es la proporción de documentos relevantes en las diez primeras posiciones, con denominador fijo de 10. **R@10** mide qué proporción de todos los documentos relevantes de la consulta aparece en esas posiciones. **AP@1000** suma la precisión en cada posición relevante hasta 1000 y divide por el total de relevantes, incluidos los que quedaron fuera del ranking. **MAP@1000** promedia la AP de las 648 consultas, incluidos los ceros. Las P y R globales también son medias por consulta [5].
+Para comparar tipos de consulta, medimos la longitud tras el preprocesamiento sin Porter. En el texto original detectamos dígitos y palabras de dos o más letras ASCII mayúsculas. Cada consulta cuenta una vez por criterio.
 
-**Tabla 6.** Medias sobre las 648 consultas de prueba
+**Tabla 3.** Resultados sobre las 648 consultas de prueba.
 
 | Modelo | Porter | P@10 | R@10 | MAP@1000 |
 | --- | --- | ---: | ---: | ---: |
-| Jaccard | No | 0,015432 | 0,063079 | 0,038520 |
-| Jaccard | Sí | 0,015123 | 0,060502 | 0,038461 |
-| TF-IDF | No | 0,049074 | 0,217460 | 0,133028 |
-| TF-IDF | Sí | 0,050463 | 0,219553 | 0,139718 |
-| BM25 | No | 0,063735 | 0,284832 | 0,180993 |
-| BM25 | Sí | 0,069444 | 0,313021 | 0,206219 |
-| Denso | No aplica | 0,104475 | 0,441306 | 0,311586 |
+| Jaccard | Sin | 0,015432 | 0,063079 | 0,038520 |
+| Jaccard | Con | 0,015123 | 0,060502 | 0,038461 |
+| TF-IDF | Sin | 0,049074 | 0,217460 | 0,133028 |
+| TF-IDF | Con | 0,050463 | 0,219553 | 0,139718 |
+| BM25 | Sin | 0,063735 | 0,284832 | 0,180993 |
+| BM25 | Con | 0,069444 | 0,313021 | 0,206219 |
+| MiniLM | No aplica | **0,104475** | **0,441306** | **0,311586** |
 
-Frente a BM25 con Porter, MiniLM obtiene 0,105367 más en MAP@1000 (un 51,09 % respecto al valor de BM25), 0,035031 más en P@10 y 0,128284 más en R@10. La AP sube en 443 consultas, baja en 156 y empata en 49. Tanto en P@10 como en R@10 hubo 219 mejoras, 60 pérdidas y 369 empates.
+```mermaid
+xychart-beta horizontal
+    x-axis ["Jaccard sin", "Jaccard con", "TF-IDF sin", "TF-IDF con", "BM25 sin", "BM25 con", "MiniLM"]
+    y-axis "MAP@1000" 0 --> 0.35
+    bar [0.038520, 0.038461, 0.133028, 0.139718, 0.180993, 0.206219, 0.311586]
+```
 
-Con Porter, el cambio de MAP fue de -0,000058 en Jaccard, +0,006689 en TF-IDF y +0,025227 en BM25. Respecto a la variante sin Porter, estos cambios representan -0,15 %, +5,03 % y +13,94 %, respectivamente. En BM25, la AP subió en 287 consultas, cayó en 265 y se mantuvo en 96.
+**Figura 1.** MAP@1000 por configuración. «Sin» y «con» indican las variantes de Porter.
 
-En los reportes de la evaluación final verificamos 4 536 filas, siete configuraciones y 49 medias por grupo. Los hashes de los artefactos que constan en esos reportes coinciden con los del manifiesto de despliegue.
+### 4.2. Incertidumbre de los contrastes
+
+En estos contrastes exploratorios, emparejamos por consulta las AP de `reports/metrics_per_query.csv`. Los IC del 95 % corresponden a los percentiles 2,5 y 97,5 de la media de las diferencias en 100 000 remuestreos. Estimamos los valores *p* bilaterales intercambiando las etiquetas dentro de cada par en 200 000 permutaciones aleatorias, con semilla 22 [9].
+
+**Tabla 4.** Diferencias de MAP@1000 e incertidumbre.
+
+| Contraste | Δ MAP | IC 95 % | p bilateral |
+| --- | ---: | ---: | ---: |
+| MiniLM frente a BM25 con Porter | +0,105367 | 0,083 a 0,128 | <0,001 |
+| Porter en BM25 (con menos sin) | +0,025227 | 0,012 a 0,039 | 0,000195 |
+| Porter en TF-IDF (con menos sin) | +0,006689 | −0,002 a 0,016 | 0,152 |
+
+Frente a BM25 con Porter, MiniLM gana 0,0350 en P@10 y 0,1283 en R@10. La AP sube en 443 consultas, baja en 156 y empata en 49. Porter apenas altera Jaccard (−0,000058 en MAP) y el contraste respalda su efecto positivo en BM25. En TF-IDF se observa un +5,03 % relativo, con un IC que incluye cero. La evidencia de mejora para esa configuración es insuficiente.
 
 <!-- pagebreak -->
 
-### 4.2. Tipos de consulta observables
+### 4.3. Rendimiento por tipo de consulta
 
-Agrupamos las consultas según tres criterios independientes. Medimos la longitud tras el preprocesamiento sin Porter y registramos la presencia de dígitos y de secuencias ASCII de dos o más mayúsculas. La Tabla 7 reúne los resultados por longitud.
+**Tabla 5.** MAP@1000 por grupo. Datos de `reports/comparison_summary.json`.
 
-**Tabla 7.** MAP@1000 por longitud de consulta
+| Grupo | n | Jac. sin | Jac. con | TF-IDF sin | TF-IDF con | BM25 sin | BM25 con | MiniLM |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 0 a 3 tokens | 62 | 0,013 | 0,009 | 0,073 | 0,056 | 0,112 | 0,106 | **0,193** |
+| 4 a 7 tokens | 402 | 0,035 | 0,032 | 0,134 | 0,139 | 0,184 | 0,214 | **0,309** |
+| 8 o más tokens | 184 | 0,055 | 0,062 | 0,152 | 0,169 | 0,199 | 0,223 | **0,358** |
+| Con dígitos | 73 | 0,032 | 0,035 | 0,156 | 0,153 | 0,179 | 0,201 | **0,276** |
+| Sin dígitos | 575 | 0,039 | 0,039 | 0,130 | 0,138 | 0,181 | 0,207 | **0,316** |
+| Con mayúsculas | 118 | 0,065 | 0,067 | 0,207 | 0,230 | 0,249 | 0,309 | **0,415** |
+| Sin mayúsculas | 530 | 0,033 | 0,032 | 0,117 | 0,120 | 0,166 | 0,183 | **0,289** |
 
-| Longitud de consulta | n | MAP BM25/Porter | MAP denso |
-| --- | ---: | ---: | ---: |
-| 0-3 tokens | 62 | 0,105802 | 0,192947 |
-| 4-7 tokens | 402 | 0,214012 | 0,308552 |
-| 8 o más tokens | 184 | 0,223031 | 0,358192 |
+**Longitud.** El MAP aumenta con la longitud en las siete configuraciones. BM25 sin Porter lidera los métodos léxicos de 0 a 3 tokens (0,112) y BM25 con Porter, los otros dos grupos. En consultas cortas, Porter reduce el MAP de TF-IDF de 0,073 a 0,056.
 
-El denso obtuvo el mayor MAP en los siete grupos. De las consultas, 73 contienen dígitos y 575 carecen de ellos. Las secuencias de mayúsculas aparecen en 118 consultas y faltan en 530. Con Porter, el MAP de TF-IDF en consultas cortas bajó de 0,072929 a 0,056409, pese a mejorar en el conjunto completo. Los grupos pueden diferir en longitud, tema y dificultad. Las diferencias son descriptivas, sin pruebas de significancia.
+**Dígitos y mayúsculas.** MiniLM supera a BM25 con Porter por 0,075 con dígitos y 0,109 sin ellos. TF-IDF sin Porter obtiene 0,156 con dígitos y 0,130 sin ellos. Las siete configuraciones logran mayor MAP con mayúsculas. MiniLM obtiene 0,415 frente a 0,289. Las diferencias por grupo son descriptivas.
 
-### 4.3. Alcance de la evidencia y limitaciones
+## Conclusión
 
-**Limitaciones.** Comprobamos los índices clásicos en una muestra de 500 documentos. Los juicios pueden ser incompletos. Al tokenizar se pierden los decimales y MiniLM trunca los textos largos. Los resultados corresponden a FiQA.
+La evaluación con las mismas consultas y juicios de relevancia situó a MiniLM como el método más eficaz de los probados en FiQA. Su ventaja sobre BM25 con Porter se reflejó en el MAP@1000 y en la proporción de documentos relevantes recuperados entre los diez primeros. El margen en MAP fue menor en las consultas con dígitos. MiniLM encontró respuestas formuladas con otro vocabulario. En otros casos, las variantes con Porter de BM25 y TF-IDF situaron primero documentos relevantes que compartían términos específicos con la pregunta.
 
-**Conclusión.** MiniLM obtuvo los mejores promedios en FiQA. Entre los modelos clásicos, BM25 con Porter ocupó el primer lugar. En la consulta sobre Bitcoin, BM25 situó primero el documento relevante que contenía los términos decisivos. El promedio resume el desempeño global, y los casos concretos muestran dónde cambia el orden de los documentos relevantes y qué juicios respaldan esa comparación.
+El análisis pareado respaldó el beneficio de Porter en BM25. Su efecto en TF-IDF quedó incierto. La reducción de sufijos modifica las frecuencias que ponderan ambos métodos, de modo que su utilidad debe valorarse en cada configuración. Las métricas globales identifican el modelo de referencia para FiQA. Los rankings comparados muestran cuándo otro método sitúa antes una respuesta relevante.
 
-### Fuentes y trazabilidad
+### Referencias
 
-El registro adjunto permite contrastar las cifras con los reportes de evaluación.
+[1] Maia, M., et al. (2018). *WWW'18 Open Challenge: Financial Opinion Mining and Question Answering*. [https://andrefreitas.org/papers/www_fiqa_2018.pdf](https://andrefreitas.org/papers/www_fiqa_2018.pdf)
 
-[1] Maia, M., Handschuh, S., Freitas, A., Davis, B., McDermott, R., Zarrouk, M. y Balahur, A. (2018). WWW'18 Open Challenge: Financial Opinion Mining and Question Answering. *Companion Proceedings of The Web Conference 2018*, 1941-1942. [https://andrefreitas.org/papers/www_fiqa_2018.pdf](https://andrefreitas.org/papers/www_fiqa_2018.pdf)
+[2] Thakur, N., et al. (2021). *BEIR: A Heterogeneous Benchmark for Zero-shot Evaluation of Information Retrieval Models*. NeurIPS Datasets and Benchmarks. [https://arxiv.org/abs/2104.08663](https://arxiv.org/abs/2104.08663)
 
-[2] Thakur, N., Reimers, N., Rücklé, A., Srivastava, A. y Gurevych, I. (2021). BEIR: A Heterogeneous Benchmark for Zero-shot Evaluation of Information Retrieval Models. *NeurIPS Datasets and Benchmarks*. [https://arxiv.org/abs/2104.08663](https://arxiv.org/abs/2104.08663)
-
-[3] Material de la asignatura facilitado por Iván Carrera. Corpus FiQA [https://huggingface.co/datasets/BeIR/fiqa](https://huggingface.co/datasets/BeIR/fiqa) y juicios de relevancia [https://huggingface.co/datasets/BeIR/fiqa-qrels](https://huggingface.co/datasets/BeIR/fiqa-qrels)
+[3] Material de la asignatura facilitado por Iván Carrera. FiQA en BEIR [https://huggingface.co/datasets/BeIR/fiqa](https://huggingface.co/datasets/BeIR/fiqa) y juicios [https://huggingface.co/datasets/BeIR/fiqa-qrels](https://huggingface.co/datasets/BeIR/fiqa-qrels).
 
 [4] Porter, M. F. (1980). An algorithm for suffix stripping. *Program*, 14(3), 130-137. [https://tartarus.org/martin/PorterStemmer/def.txt](https://tartarus.org/martin/PorterStemmer/def.txt)
 
 [5] Manning, C. D., Raghavan, P. y Schütze, H. (2008). *Introduction to Information Retrieval*. Cambridge University Press. [https://nlp.stanford.edu/IR-book/information-retrieval-book.html](https://nlp.stanford.edu/IR-book/information-retrieval-book.html)
 
-[6] Robertson, S. y Zaragoza, H. (2009). The Probabilistic Relevance Framework: BM25 and Beyond. *Foundations and Trends in Information Retrieval*, 3(4), 333-389. [https://www.ccs.neu.edu/home/vip/teach/IRcourse/IR_surveys/robertson_foundations.pdf](https://www.ccs.neu.edu/home/vip/teach/IRcourse/IR_surveys/robertson_foundations.pdf)
+[6] Robertson, S. y Zaragoza, H. (2009). *The Probabilistic Relevance Framework: BM25 and Beyond*. [https://doi.org/10.1561/1500000019](https://doi.org/10.1561/1500000019)
 
-[7] Sentence Transformers (s. f.). *all-MiniLM-L6-v2*. Ficha del modelo. [https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2](https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2)
+[7] Sentence Transformers (s. f.). *all-MiniLM-L6-v2*. [https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2](https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2)
 
 [8] Faiss (s. f.). *Faiss indexes*. [https://github.com/facebookresearch/faiss/wiki/Faiss-indexes](https://github.com/facebookresearch/faiss/wiki/Faiss-indexes)
+
+[9] Smucker, M. D., Allan, J. y Carterette, B. (2007). *A Comparison of Statistical Significance Tests for Information Retrieval Evaluation*. CIKM. [https://maroo.cs.umass.edu/getpdf.php?id=744](https://maroo.cs.umass.edu/getpdf.php?id=744)
+
+[10] NIST (2004). *TREC 2004 Robust Track Guidelines*. [https://trec.nist.gov/data/robust/04.guidelines.html](https://trec.nist.gov/data/robust/04.guidelines.html)
