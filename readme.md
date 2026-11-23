@@ -2,7 +2,7 @@
 
 Proyecto universitario de Recuperación de Información, Prof. Iván Carrera. Compara modelos clásicos y semánticos sobre FiQA mediante consultas libres, rankings y métricas.
 
-**Aplicación:** [jab-retrieval-information-system.streamlit.app](https://jab-retrieval-information-system.streamlit.app/) · **Informe:** [PDF](docs/informe/informe_tecnico.pdf) · **Evaluación:** [resultados y reproducción](reports/README.md).
+**Aplicación:** [jab-retrieval-information-system.streamlit.app](https://jab-retrieval-information-system.streamlit.app/) · **Informe:** [PDF](docs/informe/informe_tecnico.pdf) · **Arquitectura:** [PDF](docs/informe/Arquitectura-JAB-FiQA.pdf) · **Evaluación:** [resultados y reproducción](reports/README.md).
 
 [Enunciado completo](docs/ESPECIFICACION.md): construir índice invertido, implementar Jaccard, coseno TF-IDF y BM25, generar embeddings y buscar en una base vectorial, ofrecer una interfaz web gratuita, evaluar con qrels y analizar los cuatro modelos. Entregables: URL del sistema, código con instrucciones e informe técnico de máximo 5 páginas.
 
@@ -17,7 +17,7 @@ Proyecto universitario de Recuperación de Información, Prof. Iván Carrera. Co
 
 Decisiones del equipo: [PLAN](docs/PLAN.md). FiQA está en inglés y es de dominio financiero; el cargador fija las revisiones de origen y conserva los documentos con texto vacío. [Datos verificados](docs/DATASET.md): 57 638 documentos, 6 648 consultas y 648 consultas test distintas; test tiene 1 706 filas de qrels binarios. Fuentes del profesor: [corpus y consultas](https://huggingface.co/datasets/BeIR/fiqa), [qrels](https://huggingface.co/datasets/BeIR/fiqa-qrels).
 
-La evaluación usa P@10 y R@10 por consulta y MAP@1000 por sistema, con y sin Porter en los modelos clásicos. Los resultados y su procedencia están en [reports/](reports/README.md); el análisis y los ejemplos se presentan en el [informe técnico](docs/informe/informe_tecnico.pdf) ([fuente editable](docs/informe/informe_tecnico.md)).
+La evaluación usa P@10 y R@10 por consulta y MAP@1000 por sistema, con y sin Porter en los modelos clásicos. Los resultados y su procedencia están en [reports/](reports/README.md); el análisis y los ejemplos se presentan en el [informe técnico](docs/informe/informe_tecnico.pdf) ([fuente editable](docs/informe/informe_tecnico.md)), que enlaza el diagrama de [arquitectura del sistema](docs/informe/Arquitectura-JAB-FiQA.pdf).
 
 ## Stack y estructura
 
